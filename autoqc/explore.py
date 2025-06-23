@@ -1,4 +1,4 @@
-import sqlite3, pymongo, io, pickle
+import sqlite3, pymongo, io, pickle, sys
 import numpy as np
 
 # sql
@@ -14,24 +14,6 @@ collection = db["wod"]
 cur.execute("SELECT * FROM quota WHERE year==1991")
 rows = cur.fetchall()
 
-#column_names = [description[0] for description in cur.description]
-#print(column_names)
-#print(pickle.loads(rows[0]['csiro_wire_break']))
-#print(pickle.loads(rows[0]['argo_gradient_test']))
-
-#['raw', 'truth', 'uid', 'year', 'month', 'day', 'time', 'lat', 'long', 'country', 'cruise', 'ocruise', 'probe', 'training', 'flagged', 
-#'aoml_climatology_test', 'aoml_constant', 'aoml_gradient', 'aoml_gross', 'aoml_spike', 'argo_global_range_check', 'argo_gradient_test', 'argo_impossible_date_test', 
-#'argo_impossible_location_test', 'argo_pressure_increasing_test', 'argo_regional_range_test', 'argo_spike_test', 'csiro_constant_bottom', 'csiro_depth', 'csiro_long_gradient', 
-#'csiro_short_gradient', 'csiro_surface_spikes', 'csiro_wire_break', 'cotede_argo_density_inversion', 'cotede_gtspp_woa_normbias', 'cotede_gtspp_global_range', 'cotede_gtspp_gradient', 
-#'cotede_gtspp_profile_envelop', 'cotede_gtspp_spike_check', 'cotede_morello2014', 'cotede_woa_normbias', 'cotede_anomaly_detection', 'cotede_digit_roll_over', 'cotede_fuzzy_logic', 
-#'cotede_gradient', 'cotede_location_at_sea_test', 'cotede_rate_of_change', 'cotede_spike', 'cotede_tukey53h', 'cotede_tukey53h_norm', 'en_background_available_check', 'en_background_check', 
-#'en_constant_value_check', 'en_increasing_depth_check', 'en_range_check', 'en_spike_and_step_check', 'en_spike_and_step_suspect', 'en_stability_check', 'en_std_lev_bkg_and_buddy_check', 
-#'en_track_check', 'icdc_aqc_01_level_order', 'icdc_aqc_02_crude_range', 'icdc_aqc_04_max_obs_depth', 'icdc_aqc_05_stuck_value', 'icdc_aqc_06_n_temperature_extrema', 'icdc_aqc_07_spike_check', 
-#'icdc_aqc_08_gradient_check', 'icdc_aqc_09_local_climatology_check', 'icdc_aqc_10_local_climatology_check', 'iquod_bottom', 'iquod_gross_range_check', 'wod_gradient_check', 'wod_range_check', 
-#'loose_location_at_sea', 'minmax']
-
-# from www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2022.1075510/full
-# 'csiro_surface_spikes' == 'CS XBT surf. temp'?
 def propagate_max(lst):
     result = []
     current_max = 0
@@ -75,11 +57,12 @@ def assess_qc(row):
 
 total = 0
 unique_match = 0
+length_mismatch = 0
 no_match = 0
 too_many_matches = 0
 qc_match = 0
 for row in rows:
-    if row['year'] != 1991:
+    if int(row['year']) != int(sys.argv[1]) or int(row['probe']) != int(sys.argv[2]):
         continue
     datenum = row['year']*10000+row['month']*100+row['day']
     window = 0.01
@@ -90,7 +73,7 @@ for row in rows:
             [row['long'] - window, row['lat'] + window],
             [row['long'] + window, row['lat'] + window],
             [row['long'] + window, row['lat'] - window],
-            [row['long'] - window, row['lat'] - window]  # close polygon
+            [row['long'] - window, row['lat'] - window]
         ]]
     }
 
@@ -109,24 +92,27 @@ for row in rows:
     except:
         pass
 
+    # count and report whether we got 0, 1, or > 1 matches, and how many match QC exactly
     total += 1
     if len(matches) == 0:
         no_match += 1
-        #print(datenum, row['time'], row['long'], row['lat'], row['probe'])
-    if len(matches) == 1:
+    elif len(matches) == 1:
         en_qc = assess_qc(row)
         ncei_qc = matches[0]['temperature_qc_flags']
-        print('-------------')
-        print(en_qc)
-        print(ncei_qc)
         if en_qc == ncei_qc:
             qc_match += 1
-        if len(en_qc) == len(ncei_qc):
-            unique_match += 1
-
-    if len(matches) > 1:
+        else:
+            print('------------------')
+            print(en_qc)
+            print(ncei_qc)
+            if len(en_qc) != len(ncei_qc):
+                length_mismatch += 1
+                print(len(en_qc), len(ncei_qc))
+                print(row['lat'], row['long'], row['time'])
+                print(matches[0]['geolocation'], matches[0]['time'], matches[0]['date'], matches[0]['filetype'], matches[0]['_id'])
+                print(row['raw'])
+        unique_match += 1
+    elif len(matches) > 1:
         too_many_matches += 1
-        #print(datenum, row['time'], row['long'], row['lat'], row['probe'])
-        #print(matches)
 
-print(total, no_match, unique_match, too_many_matches, qc_match)
+print(total, no_match, unique_match, length_mismatch, too_many_matches, qc_match)

@@ -9,7 +9,8 @@ for file in glob.glob(sys.argv[1]+"/*"):
 
     ncfile = netCDF4.Dataset(file, mode="r")
 
-    fields_to_extract = ['time', 'date']
+    # include a few fields as is to try matching on
+    fields_to_extract = ['time', 'date', 'Access_no']
     filetype = file.split('_')[1]
 
     n_records = len(ncfile.dimensions['casts'])
@@ -18,6 +19,7 @@ for file in glob.glob(sys.argv[1]+"/*"):
     levelindex = 0
     for i in range(n_records):
         doc = {}
+        # going to need to index lon/lat as geojson Point objects
         doc['geolocation'] = {"type": "Point", "coordinates": [float(ncfile.variables['lon'][i]), float(ncfile.variables['lat'][i])]}
         doc['_id'] = int(ncfile.variables['wod_unique_cast'][i])
         doc['filetype'] = filetype
